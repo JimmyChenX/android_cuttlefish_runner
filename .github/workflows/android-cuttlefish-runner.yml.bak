@@ -1,0 +1,68 @@
+name: android cuttlefish runner
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ master ]
+
+jobs:
+  export-debs:
+    runs-on: ubuntu-22.04
+    container:
+      image: debian@sha256:4cb3f4198e4af2d03dffe6bfa4f3686773596494ef298f3882553d52e885634b # debian:bullseye-20240110
+    steps:
+    - name: apt update
+      run: apt update -y && apt upgrade -y
+
+    - name: install sudo
+      run: apt install -y sudo
+
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        repository: google/android-cuttlefish
+
+    - name: Build debs
+      run: |
+        bash tools/buildutils/build_packages.sh
+        ls -la *.deb
+
+    - name: Build debs.tar
+      run: find . -name 'cuttlefish-*.deb' -print0 | tar -cvf debs.tar --null --files-from -
+
+    - name: Publish debs.tar
+      uses: actions/upload-artifact@v4
+      with:
+        name: debs
+        path: debs.tar
+
+  run:
+    name: Test
+    needs: export-debs
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Check out 
+        uses: actions/checkout@v4
+
+      - name: Download debs.tar
+        uses: actions/download-artifact@v4
+        with:
+          name: debs
+
+      - name: Untar debs.tar
+        run: tar -xf debs.tar
+
+      - name: init
+        run: |
+          sudo dpkg -i ./cuttlefish-base_*_*64.deb || sudo apt-get install -f
+          sudo dpkg -i ./cuttlefish-user_*_*64.deb || sudo apt-get install -f
+          sudo usermod -aG kvm,cvdnetwork,render $USER
+
+      - name: download
+        run: |
+          bash download.sh
+
+      - name: run
+        run: |
+          bash run.sh

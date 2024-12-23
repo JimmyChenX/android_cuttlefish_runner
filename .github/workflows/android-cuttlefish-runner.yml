@@ -1,0 +1,67 @@
+name: android cuttlefish runner
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ master ]
+
+jobs:
+  run:
+    name: runner
+    runs-on: ubuntu-24.04
+    env:
+      CF_HOME: /home/runner/aosp_cf_phone
+
+    steps:
+      - name: Check out 
+        uses: actions/checkout@v4
+
+      - name: Set sysctl
+        run: |
+          sudo sysctl -w "net.ipv4.ping_group_range=0 2000000"
+
+      - name: Setup cloudflared
+        env:
+          CF_TOKEN: ${{ secrets.CF_TOKEN }}
+        run: |
+          curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared.deb
+          #sudo cloudflared service install $CF_TOKEN
+
+      - name: Start Python HTTP server
+        run: |
+          cd /home/runner
+          python -m http.server 8000 &
+          sudo cloudflared tunnel --url http://localhost:8000 &
+
+      - name: Untar debs.tar
+        run: |
+          tar -xf debs.tar
+
+      - name: Init env
+        run: |
+          bash -x init.sh
+
+      - name: Download cf images
+        run: |
+          bash -x download.sh
+
+      - name: Run cf
+        run: |
+          timeout 30m su $USER -c 'bash -x run.sh' || true
+
+      - name: Test adb
+        run: |
+          HOME=$CF_HOME $CF_HOME/bin/adb_connector || $CF_HOME/bin/adb connect 127.0.0.1:6520
+          $CF_HOME/bin/adb devices
+
+      - name: Wait
+        run: |
+          sudo cloudflared tunnel --url http://localhost:8080 &
+          timeout 2m python proxy.py || true
+
+      - name: Logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: /home/runner/aosp_cf_phone/cuttlefish/instances/cvd-?/logs/
