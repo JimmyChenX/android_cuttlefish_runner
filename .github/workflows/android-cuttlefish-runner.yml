@@ -2,11 +2,38 @@ name: android cuttlefish runner
 
 on:
   workflow_dispatch:
+    inputs:
+      ubuntu:
+        description: 'ubuntu version'
+        required: true
+        default: 'ubuntu-latest'
+        type: choice
+        options:
+        - ubuntu-latest
+        - ubuntu-26.04
+        - ubuntu-26.04-arm
+        - ubuntu-24.04
+        - ubuntu-24.04-arm
+      branch:
+        description: 'aosp branch'
+        required: true
+        default: 'aosp-android-latest-release'
+        type: string
+      device:
+        description: 'aosp device'
+        required: true
+        default: 'aosp_cf_x86_64_only_phone'
+        type: string
+      timeout:
+        description: 'time out'
+        required: true
+        default: '10m'
+        type: string
 
 jobs:
   run:
     name: runner
-    runs-on: ubuntu-26.04
+    runs-on: ${{ inputs.ubuntu }}
     env:
       CF_HOME: /home/runner/aosp_cf
 
@@ -38,7 +65,7 @@ jobs:
           sudo dpkg -i cloudflared.deb
           #sudo cloudflared service install $CF_TOKEN
 
-      - name: Start File server
+      - name: Start File Server
         run: |
           cd /home/runner
           python -m http.server 8000 &
@@ -46,29 +73,35 @@ jobs:
 
       - name: Init env
         run: |
-          bash -x init.sh
+          bash -x tools/init.sh
 
       - name: Download cf images
         run: |
-          bash -x download_x86.sh
+          bash -x tools/download.sh
+        env:
+          BRANCH: ${{ inputs.branch }}
+          DEVICE: ${{ inputs.device }}
 
       - name: Run cf
         run: |
-          sudo su $USER -c "nohup bash -x run.sh '$CF_HOME' > run.log 2>&1 &"
+          sudo su $USER -c "nohup bash -x tools/run.sh '$CF_HOME' > run.log 2>&1 &"
+
+      - name: Start CVD Server
+        run: |
+          sudo cloudflared tunnel --url http://localhost:8080 &
+          python tools/proxy.py &
+
+      - name: Print Logs
+        run: |
+          until find $CF_HOME/cuttlefish/instances -type f -path "*/cvd-*/logs/*.log" 2>/dev/null | grep -q .; do
+              timeout 10s tail -f *.log || true
+          done
+          timeout $TIMEOUT tail -F $CF_HOME/cuttlefish/instances/cvd-?/logs/* || true
+        env:
+          TIMEOUT: ${{ inputs.timeout }}
 
       - name: Test adb
         run: |
           HOME=$CF_HOME $CF_HOME/bin/adb_connector || $CF_HOME/bin/adb connect 127.0.0.1:6520
           $CF_HOME/bin/adb devices
-
-      - name: Start CVD Server
-        run: |
-          sudo cloudflared tunnel --url http://localhost:8080 &
-          timeout 30m python proxy.py || true
-
-      - name: Logs
-        uses: actions/upload-artifact@v4
-        with:
-          name: logs
-          path: $CF_HOME/cuttlefish/instances/cvd-?/logs/
 
