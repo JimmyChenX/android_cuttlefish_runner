@@ -9,7 +9,7 @@ fi
 cd $CVD_HOME
 
 if [ -e use_qemu ];then
-  HOME=$PWD ./bin/launch_cvd --vm_manager=qemu_cli -cpus=4 --memory_mb=8192 -enable_sandbox=false --report_anonymous_usage_stats=n --daemon
+  HOME=$PWD ./bin/launch_cvd --vm_manager=qemu_cli --start_webrtc=true -cpus=4 --memory_mb=8192 -enable_sandbox=false --report_anonymous_usage_stats=n --daemon
 else
   HOME=$PWD ./bin/launch_cvd -cpus=4 --memory_mb=8192 -enable_sandbox=false --report_anonymous_usage_stats=n --daemon
 fi
