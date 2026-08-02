@@ -1,9 +1,12 @@
-#ifconfig
+#!/bin/bash
 
-#sudo modprobe vhost_vsock vhost_net
+CVD_HOME=$1
 
-ls -l /dev/ | grep lvm
+if [ ! -d $CVD_HOME ] && [ ! -f $CVD_HOME/bin/launch_cvd ] ;then
+    echo launch_cvd not found 
+    exit 1
+fi
+cd $CVD_HOME
 
-cd $CF_HOME
 
-HOME=$PWD ./bin/launch_cvd -cpus=4 --memory_mb=8192 -enable_sandbox=false --report_anonymous_usage_stats=n --gpu_mode=none --daemon
+HOME=$PWD ./bin/launch_cvd -cpus=4 --memory_mb=8192 -enable_sandbox=false --report_anonymous_usage_stats=n --daemon

@@ -2,41 +2,47 @@ name: android cuttlefish runner
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ master ]
 
 jobs:
   run:
     name: runner
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
-      CF_HOME: /home/runner/aosp_cf_phone
+      CF_HOME: /home/runner/aosp_cf
 
     steps:
       - name: Check out 
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - name: Set sysctl
+      - name: Set env
         run: |
+          sudo curl -fsSL https://us-apt.pkg.dev/doc/repo-signing-key.gpg -o /etc/apt/trusted.gpg.d/artifact-registry.asc
+          sudo chmod a+r /etc/apt/trusted.gpg.d/artifact-registry.asc
+          echo "deb https://us-apt.pkg.dev/projects/android-cuttlefish-artifacts android-cuttlefish main" | sudo tee -a /etc/apt/sources.list.d/artifact-registry.list
+          sudo apt update
           sudo sysctl -w "net.ipv4.ping_group_range=0 2000000"
 
       - name: Setup cloudflared
         env:
           CF_TOKEN: ${{ secrets.CF_TOKEN }}
         run: |
-          curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          ARCH=$(uname -m) && \
+          case $ARCH in \
+            x86_64) ARCH_NAME="amd64" ;; \
+            aarch64|arm64) ARCH_NAME="arm64" ;; \
+            armv7l|armhf) ARCH_NAME="armhf" ;; \
+            i386|i686) ARCH_NAME="386" ;; \
+            *) echo "unsupported arch: $ARCH" && exit 1 ;; \
+          esac && \
+          curl -L -o cloudflared.deb "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${ARCH_NAME}.deb"
           sudo dpkg -i cloudflared.deb
           #sudo cloudflared service install $CF_TOKEN
 
-      - name: Start Python HTTP server
+      - name: Start File server
         run: |
           cd /home/runner
           python -m http.server 8000 &
           sudo cloudflared tunnel --url http://localhost:8000 &
-
-      - name: Untar debs.tar
-        run: |
-          tar -xf debs.tar
 
       - name: Init env
         run: |
@@ -44,24 +50,25 @@ jobs:
 
       - name: Download cf images
         run: |
-          bash -x download.sh
+          bash -x download_x86.sh
 
       - name: Run cf
         run: |
-          timeout 30m su $USER -c 'bash -x run.sh' || true
+          sudo su $USER -c "nohup bash -x run.sh '$CF_HOME' > run.log 2>&1 &"
 
       - name: Test adb
         run: |
           HOME=$CF_HOME $CF_HOME/bin/adb_connector || $CF_HOME/bin/adb connect 127.0.0.1:6520
           $CF_HOME/bin/adb devices
 
-      - name: Wait
+      - name: Start CVD Server
         run: |
           sudo cloudflared tunnel --url http://localhost:8080 &
-          timeout 2m python proxy.py || true
+          timeout 30m python proxy.py || true
 
       - name: Logs
         uses: actions/upload-artifact@v4
         with:
           name: logs
-          path: /home/runner/aosp_cf_phone/cuttlefish/instances/cvd-?/logs/
+          path: $CF_HOME/cuttlefish/instances/cvd-?/logs/
+
