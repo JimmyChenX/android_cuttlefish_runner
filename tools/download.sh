@@ -30,7 +30,7 @@ RURL_CI_ANDROID=$(curl -Ls -o /dev/null -w %{url_effective} ${URL_CI_ANDROID})
 VERSION=${RURL_CI_ANDROID%/$TARGET/latest/view/BUILD_INFO}
 VERSION=${VERSION#https://ci.android.com/builds/submitted/}
 
-wget -nv "https://ci.android.com/builds/submitted/15885347/aosp_cf_arm64_only_phone-userdebug/latest/raw/aosp_cf_arm64_only_phone-img-15885347.zip" -O ${DEVICE}-img.zip
+wget -nv "https://ci.android.com/builds/submitted/15885347/aosp_cf_x86_64_only_phone-userdebug/latest/raw/aosp_cf_x86_64_only_phone-img-15885347.zip" -O ${DEVICE}-img.zip
 
 if [ "$TARGET_ARCH" = "$HOST_ARCH" ]; then
     FILE_NAME="cvd-host_package.tar.gz"
