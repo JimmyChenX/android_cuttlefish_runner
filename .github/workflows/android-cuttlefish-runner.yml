@@ -97,6 +97,31 @@ jobs:
           sudo cloudflared tunnel --url http://localhost:8080 &
           python tools/proxy.py &
 
+      - name: Start Ngrok TCP Tunnel
+        env:
+          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+        run: |
+          # 安装 ngrok
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt update && sudo apt install ngrok
+          
+          # 配置 token
+          ngrok config add-authtoken $NGROK_AUTH_TOKEN
+          
+          # 启动 TCP 转发到 6520 端口 (Cuttlefish ADB)
+          # 注意：使用 --log=stdout 方便我们在控制台看到输出
+          nohup ngrok tcp 6520 --log=stdout > ngrok.log 2>&1 &
+          
+          # 等待几秒，确保隧道建立
+          sleep 5
+          
+          # 从本地 API 获取 ngrok 分配的公网地址
+          echo "==============================================="
+          echo "ADB Remote Address:"
+          curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url'
+          echo "==============================================="
+
       - name: Print Logs
         run: |
           until find $CF_HOME/cuttlefish/instances -type f -path "*/cvd-*/logs/*.log" 2>/dev/null | grep -q .; do
